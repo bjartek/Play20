@@ -70,7 +70,7 @@ object Application extends Controller {
    */
   def list(page: Int, orderBy: Int, filter: String) = Action { implicit request =>
     Ok(html.list(
-      Computer.list(page = page, orderBy = orderBy, filter = ("%"+filter+"%")),
+      Computer.list(page = page, orderBy = orderBy, filter = (filter)),
       orderBy, filter
     ))
   }
@@ -80,8 +80,8 @@ object Application extends Controller {
    *
    * @param id Id of the computer to edit
    */
-  def edit(id: Long) = Action {
-    Computer.findById(id).map { computer =>
+  def edit(id: ObjectId) = Action {
+    Computer.findOneByID(id).map { computer =>
       Ok(html.editForm(id, computerForm.fill(computer), Company.options))
     }.getOrElse(NotFound)
   }
@@ -91,11 +91,11 @@ object Application extends Controller {
    *
    * @param id Id of the computer to edit
    */
-  def update(id: Long) = Action { implicit request =>
+  def update(id: ObjectId) = Action { implicit request =>
     computerForm.bindFromRequest.fold(
       formWithErrors => BadRequest(html.editForm(id, formWithErrors, Company.options)),
       computer => {
-        Computer.update(id, computer)
+        Computer.save(computer.copy(id = id))
         Home.flashing("success" -> "Computer %s has been updated".format(computer.name))
       }
     )
@@ -124,8 +124,8 @@ object Application extends Controller {
   /**
    * Handle computer deletion.
    */
-  def delete(id: Long) = Action {
-    Computer.delete(id)
+  def delete(id: ObjectId) = Action {
+    Computer.remove(MongoDBObject("_id" -> id))
     Home.flashing("success" -> "Computer has been deleted")
   }
 
