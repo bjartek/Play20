@@ -16,8 +16,8 @@ case class Page[A](items: Seq[A], page: Int, offset: Long, total: Long) {
 case class Computer(
   id: ObjectId = new ObjectId, 
   name: String, 
-  introduced: Option[Date], 
-  discontinued: Option[Date], 
+  introduced: Option[Date] = None, 
+  discontinued: Option[Date] = None,
   @Key("company_id") companyId: Option[ObjectId] = None 
 )
 
