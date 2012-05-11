@@ -5,16 +5,37 @@ import play.api.mvc._
 import play.api.data._
 import play.api.data.Forms._
 
-import anorm._
+import org.bson.types.ObjectId
 
+import play.api.Play.current
+import se.radley.plugin.salat._
+import com.novus.salat._
+
+import com.mongodb.casbah.Imports._
 import views._
 import models._
-
 /**
  * Manage a database of computers
  */
 object Application extends Controller { 
-  
+
+
+ /*
+  * This is here for now, should be moved to the salat plugin
+  */
+  import play.api.data.format._
+  import play.api.data.format.Formats._
+  implicit val objectIdFormat = new Formatter[ObjectId] {
+   def bind(key: String, data: Map[String, String]) = {
+     stringFormat.bind(key, data).right.flatMap { value =>
+           scala.util.control.Exception.allCatch[ObjectId]
+            .either(new ObjectId(value))
+           .left.map(e => Seq(FormError(key, "error.objectId", Nil))) }
+   }
+ 
+   def unbind(key: String, value: ObjectId) = Map(key -> value.toString)
+  }
+
   /**
    * This result directly redirect to the application home.
    */
@@ -25,11 +46,11 @@ object Application extends Controller {
    */ 
   val computerForm = Form(
     mapping(
-      "id" -> ignored(NotAssigned:Pk[Long]),
+      "id" -> ignored(new ObjectId()),
       "name" -> nonEmptyText,
       "introduced" -> optional(date("yyyy-MM-dd")),
       "discontinued" -> optional(date("yyyy-MM-dd")),
-      "company" -> optional(longNumber)
+      "company" -> optional(of[ObjectId] )
     )(Computer.apply)(Computer.unapply)
   )
   
