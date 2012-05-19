@@ -4,6 +4,7 @@ import play.core._
 import play.api._
 
 import akka.actor._
+import akka.util.Duration
 import akka.actor.Actor._
 
 import java.util.concurrent.{ TimeUnit }
@@ -52,7 +53,7 @@ trait Promise[+A] {
 
   def value = await
 
-  def await: NotWaiting[A] = await(5000)
+  def await: NotWaiting[A] = await(Promise.defaultTimeout)
 
   def await(timeout: Long, unit: TimeUnit = TimeUnit.MILLISECONDS): NotWaiting[A]
 
@@ -67,34 +68,36 @@ trait Promise[+A] {
 
     val p = Promise[Either[A, B]]()
     val ref = Ref(false)
-    this.onRedeem { v =>
+    this.extend1 { v =>
       if (!ref.single()) {
-        val iRedeemed = atomic { implicit txn =>
-          val before = ref()
-          ref() = true
-          !before
-        }
-        if (iRedeemed) {
-          p.redeem(Left(v))
-        }
+        val iRedeemed = ref.single.getAndTransform(_ => true)
+
+        if (! iRedeemed) { v match {
+          case Redeemed(a) =>
+            p.redeem(Left(a))
+          case Thrown(e) =>
+            p.throwing(e)
+          }
+                        }
       }
     }
-    other.onRedeem { v =>
+    other.extend1 { v =>
       if (!ref.single()) {
-        val iRedeemed = atomic { implicit txn =>
-          val before = ref()
-          ref() = true
-          !before
-        }
-        if (iRedeemed) {
-          p.redeem(Right(v))
-        }
+        val iRedeemed = ref.single.getAndTransform(_ => true)
+
+        if (! iRedeemed) { v match {
+          case Redeemed(a) =>
+            p.redeem(Right(a))
+          case Thrown(e) =>
+            p.throwing(e)
+          }
+                        }
       }
     }
     p
   }
 
-  def orTimeout[B](message: B, duration: Long, unit: TimeUnit = TimeUnit.MILLISECONDS): Promise[Either[A, B]] = {
+  def orTimeout[B](message: => B, duration: Long, unit: TimeUnit = TimeUnit.MILLISECONDS): Promise[Either[A, B]] = {
     or(Promise.timeout(message, duration, unit))
   }
 
@@ -158,7 +161,7 @@ class STMPromise[A] extends Promise[A] with Redeemable[A] {
     }
   }
 
-  private def invoke[T](a: T, k: T => Unit): Unit = akka.dispatch.Future { k(a) }(play.core.Invoker.promiseDispatcher)
+  private def invoke[T](a: T, k: T => Unit): Unit = akka.dispatch.Future { k(a) }(Promise.system.dispatcher)
 
   def redeem(body: => A): Unit = {
     val result = scala.util.control.Exception.allCatch[A].either(body)
@@ -248,6 +251,11 @@ object PurePromise {
 }
 
 object Promise {
+  
+  private [concurrent] lazy val defaultTimeout = 
+    Duration(system.settings.config.getMilliseconds("promise.akka.actor.typed.timeout"), TimeUnit.MILLISECONDS).toMillis 
+
+  private [concurrent] lazy val system = ActorSystem("promise")
 
   def pure[A](a: => A): Promise[A] = PurePromise(a)
 
