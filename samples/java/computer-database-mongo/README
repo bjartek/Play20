@@ -1,7 +1,9 @@
-This is a classic CRUD application, backed by a JDBC database. It demonstrates:
+This is a classic CRUD application, backed by a MongoDb database using Morphia. It demonstrates:
 
-- Accessing a JDBC database, using Ebean.
+- Accessing a MongoDB database, using Morphia
 - Achieving, table pagination and CRUD forms.
 - Integrating with a CSS framework (Twitter Bootstrap ).
 
 Twitter Bootstrap requires a different form layout to the default one that the Play 2.0 form helper generates, so this application also provides an example of integrating a custom form input constructor.
+
+This samples does not have any functionaly to preload the mongodb database with data. Please run the scala sample first. 
