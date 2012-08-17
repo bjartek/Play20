@@ -51,13 +51,14 @@ trait PlaySettings {
 
       "views.%format%._"))
 
-  def closureCompilerSettings(c: com.google.javascript.jscomp.CompilerOptions) = Seq[Setting[_]](
-    resourceGenerators in Compile <<= JavascriptCompiler(Some(c))(Seq(_)),
+  def closureCompilerSettings(optionCompilerOptions: com.google.javascript.jscomp.CompilerOptions) = Seq[Setting[_]](
+    resourceGenerators in Compile <<= JavascriptCompiler(Some(optionCompilerOptions))(Seq(_)),
     resourceGenerators in Compile <+= LessCompiler,
     resourceGenerators in Compile <+= CoffeescriptCompiler
   )
 
   lazy val defaultSettings = Seq[Setting[_]](
+    
 
     resolvers ++= Seq(
       "Typesafe Releases Repository" at "http://repo.typesafe.com/typesafe/releases/",
@@ -86,7 +87,10 @@ trait PlaySettings {
     libraryDependencies += "play" %% "play-test" % play.core.PlayVersion.current % "test",
 
     parallelExecution in Test := false,
-
+    
+    //TODO: this should be re-enabled once we know more about xsbt/issues/512
+    fork in Test := false,
+    
     testOptions in Test += Tests.Setup { loader =>
       loader.loadClass("play.api.Logger").getMethod("init", classOf[java.io.File]).invoke(null, new java.io.File("."))
     },
@@ -107,13 +111,13 @@ trait PlaySettings {
 
     sourceGenerators in Compile <+= (confDirectory, sourceManaged in Compile, routesImport) map RouteFiles,
 
-    // Adds config/routes to continious triggers
-    watchSources <+= confDirectory map { _ / "routes" },
+    // Adds config directory's source files to continuous hot reloading 
+    watchSources <+= confDirectory map {all => all},
 
     sourceGenerators in Compile <+= (sourceDirectory in Compile, sourceManaged in Compile, templatesTypes, templatesImport) map ScalaTemplates,
 
-    // Adds views template to continious triggers
-    watchSources <++= baseDirectory map { path => ((path / "app") ** "*.scala.*").get },
+    // Adds app directory's source files to continuous hot reloading
+    watchSources <++= baseDirectory map { path => ((path / "app") ** "*").get },
 
     commands ++= Seq(shCommand, playCommand, playRunCommand, playStartCommand, h2Command, classpathCommand, licenseCommand, computeDependenciesCommand),
 
@@ -153,7 +157,13 @@ trait PlaySettings {
 
     routesImport := Seq.empty[String],
 
-    playHash <<= playHashTask,
+    playMonitoredDirectories <<= playMonitoredDirectoriesTask,
+
+    playDefaultPort := 9000,
+
+    playOnStarted := Nil,
+
+    playOnStopped := Nil,
 
     // Assets
 
@@ -162,6 +172,14 @@ trait PlaySettings {
     playExternalAssets := Seq.empty[(File, File => PathFinder, String)],
 
     playAssetsDirectories <+= baseDirectory / "public",
+
+    requireSubFolder := "rjs",
+
+    requireNativePath := None,
+
+    buildRequire <<= buildRequireTask,
+
+    buildRequireAndPackage <<= buildRequireAndPackageTask,
 
     resourceGenerators in Compile <+= LessCompiler,
     resourceGenerators in Compile <+= CoffeescriptCompiler,

@@ -63,7 +63,7 @@ package play.api.mvc {
     lazy val acceptLanguages: Seq[play.api.i18n.Lang] = {
       try {
         headers.get(play.api.http.HeaderNames.ACCEPT_LANGUAGE).map { acceptLanguage =>
-          acceptLanguage.split(",").map(l => play.api.i18n.Lang(l.split(";").head)).toSeq
+          acceptLanguage.split("\\s*,\\s*").map(l => play.api.i18n.Lang(l.split(";").head)).toSeq
         }.getOrElse(Nil)
       } catch {
         case e => e.printStackTrace(); Nil
@@ -154,6 +154,21 @@ package play.api.mvc {
 
   }
 
+
+  object Request {
+
+    def apply[A](rh:RequestHeader,a:A) = new Request[A] {
+           def uri = rh.uri
+           def path = rh.path
+           def method = rh.method
+           def queryString = rh.queryString
+           def headers = rh.headers
+           lazy val remoteAddress = rh.remoteAddress
+           def username = None
+           val body = a
+    }
+  }
+
   /**
    * Wrap an existing request. Useful to extend a request.
    */
@@ -238,9 +253,7 @@ package play.api.mvc {
     /**
      * Transform the Headers to a Map
      */
-    def toMap: Map[String, Seq[String]] = keys.map { headerKey =>
-      (headerKey, getAll(headerKey))
-    }.toMap
+    def toMap: Map[String, Seq[String]]
 
     /**
      * Transform the Headers to a Map by ignoring multiple values.
@@ -585,7 +598,7 @@ package play.api.mvc {
      * @return a valid Set-Cookie header value
      */
     def merge(cookieHeader: String, cookies: Seq[Cookie], discard: Seq[String] = Nil): String = {
-      encode(decode(cookieHeader) ++ cookies, discard)
+      encode(cookies ++ decode(cookieHeader), discard)
     }
 
   }

@@ -131,6 +131,45 @@ class Application(val path: File, val classloader: ClassLoader, val sources: Opt
 
   }
 
+  /**
+   * Handle a runtime error during the execution of an action
+   */
+  private[play] def handleError(request: RequestHeader, e: Throwable): Result = try {
+    e match {
+      case e: PlayException.UsefulException => throw e
+      case e: Throwable => {
+
+        val source = sources.flatMap(_.sourceFor(e))
+
+        throw new PlayException(
+          "Execution exception",
+          "[%s: %s]".format(e.getClass.getSimpleName, e.getMessage),
+          Some(e)) with PlayException.ExceptionSource {
+          def line = source.map(_._2)
+          def position = None
+          def input = source.map(_._1).map(scalax.file.Path(_))
+          def sourceName = source.map(_._1.getAbsolutePath)
+        }
+      }
+    }
+  } catch {
+    case e => try {
+      Logger.error(
+        """
+        |
+        |! %sInternal server error, for request [%s] ->
+        |""".stripMargin.format(e match {
+          case p: PlayException => "@" + p.id + " - "
+          case _ => ""
+        }, request),
+        e)
+
+      global.onError(request, e)
+    } catch {
+      case e => DefaultGlobal.onError(request, e)
+    }
+  }
+
   private[api] def pluginClasses: Seq[String] = {
 
     import scalax.file._
@@ -259,6 +298,29 @@ class Application(val path: File, val classloader: ClassLoader, val sources: Opt
    * @return an existing file
    */
   def getExistingFile(relativePath: String): Option[File] = Option(getFile(relativePath)).filter(_.exists)
+
+  /**
+   * Scans the application classloader to retrieve all types within a specific package.
+   *
+   * This method is useful for some plugins, for example the EBean plugin will automatically detect all types
+   * within the models package, using:
+   * {{{
+   * val entities = application.getTypes("models")
+   * }}}
+   *
+   * Note that it is better to specify a very specific package to avoid expensive searches.
+   *
+   * @param packageName the root package to scan
+   * @return a set of types names specifying the condition
+   */
+  def getTypes(packageName: String): Set[String] = {
+    import org.reflections._
+    new Reflections(
+      new util.ConfigurationBuilder()
+        .addUrls(util.ClasspathHelper.forPackage(packageName, classloader))
+        .filterInputsBy(new util.FilterBuilder().include(util.FilterBuilder.prefix(packageName + ".")))
+        .setScanners(new scanners.TypesScanner())).getStore.get(classOf[scanners.TypesScanner]).keySet.asScala.toSet
+  }
 
   /**
    * Scans the application classloader to retrieve all types annotated with a specific annotation.

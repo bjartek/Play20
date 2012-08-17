@@ -23,10 +23,6 @@ class Invoker(applicationProvider: Option[ApplicationProvider] = None) {
     Invoker.appProviderActorSystem(a)
   }.getOrElse(ActorSystem("play"))
 
-  val actionInvoker = {
-    system.actorOf(Props[ActionInvoker].withDispatcher("akka.actor.actions-dispatcher").withRouter(RoundRobinRouter(100)), name = "actions")
-  }
-
   /**
    * kills actor system
    */
@@ -45,19 +41,19 @@ object Invoker {
   /**
    * provides an extractor for body parser
    */
-  case class GetBodyParser(request: RequestHeader, bodyParser: BodyParser[_])
+  //case class GetBodyParser(request: RequestHeader, bodyParser: BodyParser[_])
 
   /**
    * provides actor helper
    */
-  case class HandleAction[A](request: Request[A], response: Response, action: Action[A], app: Application)
+  //case class HandleAction[A](request: Request[A], response: Response, action: Action[A], app: Application)
 
   private var invokerOption: Option[Invoker] = None
 
   private def invoker: Invoker = invokerOption.getOrElse {
     val default = new Invoker()
     invokerOption = Some(default)
-    Logger.warn("Invoker was created outside of Invoker#init - this potentially could lead to initialization problems in production mode")
+    Logger.info("Invoker was created outside of Invoker#init - this potentially could lead to initialization problems in production mode")
     default
   }
 
@@ -93,98 +89,6 @@ object Invoker {
    */
   def system = invoker.system
 
-  /**
-   * provides invoker used for Action dispatching
-   */
-  def actionInvoker = invoker.actionInvoker
-
-}
-
-/**
- * an Akka actor responsible for dispatching Actions.
- */
-class ActionInvoker extends Actor {
-
-  def receive = {
-
-    case Invoker.GetBodyParser(request, bodyParser) => {
-      sender ! (bodyParser(request))
-    }
-
-    case Invoker.HandleAction(request, response: Response, action, app: Application) => {
-
-      val result = try {
-        try {
-          Threads.withContextClassLoader(app.classloader) {
-            action(request)
-          }
-        } catch {
-          case e: PlayException.UsefulException => throw e
-          case e: Throwable => {
-
-            val source = app.sources.flatMap(_.sourceFor(e))
-
-            throw new PlayException(
-              "Execution exception",
-              "[%s: %s]".format(e.getClass.getSimpleName, e.getMessage),
-              Some(e)) with PlayException.ExceptionSource {
-              def line = source.map(_._2)
-              def position = None
-              def input = source.map(_._1).map(scalax.file.Path(_))
-              def sourceName = source.map(_._1.getAbsolutePath)
-            }
-
-          }
-        }
-      } catch {
-        case e => try {
-
-          Logger.error(
-            """
-            |
-            |! %sInternal server error, for request [%s] ->
-            |""".stripMargin.format(e match {
-              case p: PlayException => "@" + p.id + " - "
-              case _ => ""
-            }, request),
-            e)
-
-          app.global.onError(request, e)
-        } catch {
-          case e => DefaultGlobal.onError(request, e)
-        }
-      }
-
-      response.handle {
-
-        // Handle Flash Scope (probably not the good place to do it)
-        result match {
-          case r: PlainResult => {
-
-            val header = r.header
-
-            val flashCookie = {
-              header.headers.get(SET_COOKIE)
-                .map(Cookies.decode(_))
-                .flatMap(_.find(_.name == Flash.COOKIE_NAME)).orElse {
-                  Option(request.flash).filterNot(_.isEmpty).map { _ =>
-                    Cookie(Flash.COOKIE_NAME, "", 0)
-                  }
-                }
-            }
-
-            flashCookie.map { newCookie =>
-              r.withHeaders(SET_COOKIE -> Cookies.merge(header.headers.get(SET_COOKIE).getOrElse(""), Seq(newCookie)))
-            }.getOrElse(r)
-
-          }
-          case r => r
-        }
-
-      }
-
-    }
-  }
 }
 
 object Agent {

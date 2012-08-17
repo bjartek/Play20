@@ -8,6 +8,7 @@ import play.api.cache.Cache
 import play.api.libs.json._
 import play.api.libs.json.Json._
 import play.api.libs.Jsonp
+import play.api.libs.concurrent.Promise
 
 import models._
 import models.Protocol._
@@ -57,8 +58,17 @@ object Application extends Controller {
     Ok(toJson(JsObject(List("blah" -> JsString("foo"))))) 
   }
 
-  def jsonWithContentType = Action {
-    Ok("{}").as("application/json")
+  def jsonWithContentType = Action { request =>
+    request.headers.get("AccEPT") match {
+      case Some("application/json") =>  {
+        val acceptHdr = request.headers.toMap.collectFirst{ case (header,valueSeq) if header.equalsIgnoreCase("Accept") => (header, valueSeq) }
+        acceptHdr.map{
+          case (name,value) => Ok("{\""+name+"\":\""+ value.head+ "\"}").as("application/json")
+        }.getOrElse(InternalServerError)
+      }
+      case _ => UnsupportedMediaType
+
+    }
   }
 
   def jsonWithContentTypeAndCharset = Action {
@@ -116,5 +126,16 @@ object Application extends Controller {
     import java.io.File
     val file = new File(filepath)
     Ok.sendFile(file, onClose = () => { file.delete() })
+  }
+
+  def syncError = Action {
+    sys.error("Error")
+    Ok
+  }
+
+  def asyncError = Action {
+    Async {
+      Promise.pure[Result](sys.error("Error"))
+    }
   }
 }
